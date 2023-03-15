@@ -1,0 +1,143 @@
+name: Test-GPT
+tag: null
+deleted_at: null
+flows:
+    default:
+        active: true
+        fallback: true
+        intents:
+            defaultIntent:
+                type: text
+                initial: false
+                fallback: true
+            toSuccess:
+                type: command
+                initial: false
+                fallback: false
+                condition: content == "toSuccess"
+            toFallback:
+                type: command
+                initial: false
+                fallback: false
+                condition: content == "toFallback"
+        states:
+            init:
+                transitions:
+                    stateAskQuestion:
+                        fallback: true
+                initial: true
+            stateAskQuestion:
+                transitions:
+                    stateAPIGetAnswer:
+                        fallback: true
+                        mapping: setPrompt
+                action:
+                    -
+                        name: txtAskQuestion
+                float:
+                    condition: content == "reset"
+                    priority: 10
+            stateAPIGetAnswer:
+                transitions:
+                    stateShowAnswer:
+                        condition: intent == "toSuccess"
+                    stateFallbackAskQuestion:
+                        condition: intent == "toFallback"
+                action:
+                    -
+                        name: apiGetAnswer
+                    -
+                        name: methodGetAnswer
+            stateFallbackAskQuestion:
+                transitions:
+                    stateAskQuestion:
+                        fallback: true
+                action:
+                    -
+                        name: txtFallbackAskQuestion
+            stateShowAnswer:
+                transitions:
+                    stateAPIGetAnswer:
+                        fallback: true
+                        mapping: setPrompt
+                action:
+                    -
+                        name: txtAnswer
+            stateDebug:
+                action:
+                    -
+                        name: txtDebug
+                float:
+                    condition: content == "debug data"
+                    priority: 1
+                end: true
+        actions:
+            txtAskQuestion:
+                type: text
+                options:
+                    text: 'Halo, silakan tanya apa saja yang berkaitan dengan Mitsubishi...'
+            txtDebug:
+                type: text
+                options:
+                    text: 'Log: $(data.log)'
+            apiGetAnswer:
+                type: api
+                options:
+                    uri: $(config.openAiBaseUrl)/completions
+                    method: POST
+                    body:
+                        model: text-davinci-003
+                        prompt: $(data.prompt)
+                        stop: $(data.stop)
+                        user: bot-test-gpt
+                        temperature: 0
+                        max_tokens: 200
+                    headers:
+                        Authorization: Bearer $(config.apiKey)
+            methodGetAnswer:
+                method: getAnswer
+                type: method
+                options:
+                    result: $(result)
+            txtAnswer:
+                type: text
+                options:
+                    text: $(data.answer)
+            txtFallbackAskQuestion:
+                type: text
+                options:
+                    text: 'Maaf saya belum mengerti :('
+        methods:
+            'getAnswer(message,context,data,options)': |-
+                data.log = options.result;
+                if (!options.result) {
+                    return {
+                        type: 'command',
+                        content: 'toFallback'
+                    }
+                }
+
+                if (options.result.choices.length < 1) {
+                    return {
+                        type: 'command',
+                        content: 'toFallback'
+                    }
+                }
+
+                if (!options.result.choices[0].text) {
+                    return {
+                        type: 'command',
+                        content: 'toFallback'
+                    }
+                }
+
+                data.answer = options.result.choices[0].text.split("Mira: ")[1];
+
+                return {
+                    type: 'command',
+                    content: 'toSuccess'
+                }
+            setPrompt(ctx): >-
+                var context = "Kamu adalah Mira, virtual assistant untuk Mitsubishi Motors Indonesia.\n\nPelanggan: Halo\nMira: Ada yang bisa Mira
+                bantu?\nPelanggan: "; context += ctx.content; ctx.data.prompt = context; ctx.data.stop = "Pelanggan:"; return ctx;
+config: $(./config.yml)
